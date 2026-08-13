@@ -12,7 +12,7 @@ OpenView is an open-source market charting and paper-trading workspace inspired 
 
 ## Local setup
 
-1. Copy `.env.example` to `.env` and set `DATABASE_URL`, `AUTH_SECRET`, and provider keys. The current checkout already has the provider keys and database URL, but it does not yet have `AUTH_SECRET`.
+1. Copy `.env.example` to `.env` and set `DATABASE_URL`, `AUTH_SECRET`, and provider keys. The current checkout has all four configured locally; keep `.env` private.
 2. Run `npm install`.
 3. Run `npm run dev`.
 4. Open `http://localhost:3000`.
@@ -23,6 +23,7 @@ For Supabase, use the Postgres connection string in `DATABASE_URL`. This impleme
 
 - Connect the GitHub repository `https://github.com/aaraven99/openview.git` to Vercel.
 - Add `DATABASE_URL`, `AUTH_SECRET`, `POLYGON_API_KEY`, and `ALPHA_VANTAGE_API_KEY` as server-side environment variables for Preview and Production.
+- `AUTH_SECRET` is mandatory in production. The application deliberately refuses the development fallback there.
 - Use a pooled Supabase connection string where available and keep `prepare: false` enabled for serverless connections.
 - Run a production smoke test for signup, login, provider status, paper order persistence, logout, and leaderboard visibility after the first deployment.
 

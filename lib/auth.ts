@@ -6,7 +6,11 @@ import { ensureSchema } from "./db";
 const COOKIE_NAME = "openview_session";
 
 function secret() {
-  return new TextEncoder().encode(process.env.AUTH_SECRET || "dev-only-openview-secret-change-me");
+  const value = process.env.AUTH_SECRET;
+  if (!value && process.env.NODE_ENV === "production") {
+    throw new Error("AUTH_SECRET must be configured in production");
+  }
+  return new TextEncoder().encode(value || "dev-only-openview-secret-change-me");
 }
 
 export async function hashPassword(password: string) {
