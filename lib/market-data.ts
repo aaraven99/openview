@@ -17,31 +17,49 @@ function seededCandles(symbol: string, count = 90): Candle[] {
   });
 }
 
+function polygonInterval(interval: string) {
+  switch (interval) {
+    case "1m": return { multiplier: 1, timespan: "minute", lookbackDays: 14 };
+    case "15m": return { multiplier: 15, timespan: "minute", lookbackDays: 21 };
+    case "1h": return { multiplier: 1, timespan: "hour", lookbackDays: 90 };
+    case "1D": return { multiplier: 1, timespan: "day", lookbackDays: 730 };
+    default: return { multiplier: 5, timespan: "minute", lookbackDays: 14 };
+  }
+}
+
 export async function getMarketData(symbol: string, interval = "5m") {
   const cleanSymbol = symbol.toUpperCase().replace(/[^A-Z0-9:._-]/g, "").slice(0, 20) || "NVDA";
   const polygonKey = process.env.POLYGON_API_KEY;
   if (polygonKey) {
     try {
-      const url = `https://api.polygon.io/v2/aggs/ticker/${encodeURIComponent(cleanSymbol)}/range/5/minute/${new Date(Date.now() - 1000 * 60 * 60 * 8).toISOString().slice(0, 10)}/${new Date().toISOString().slice(0, 10)}?adjusted=true&sort=asc&limit=200&apiKey=${encodeURIComponent(polygonKey)}`;
+      const { multiplier, timespan, lookbackDays } = polygonInterval(interval);
+      const now = new Date();
+      const from = new Date(now.getTime() - lookbackDays * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+      const to = now.toISOString().slice(0, 10);
+      const url = `https://api.polygon.io/v2/aggs/ticker/${encodeURIComponent(cleanSymbol)}/range/${multiplier}/${timespan}/${from}/${to}?adjusted=true&sort=asc&limit=500&apiKey=${encodeURIComponent(polygonKey)}`;
       const response = await fetch(url, { next: { revalidate: 30 } });
       const payload = await response.json();
       if (response.ok && Array.isArray(payload.results) && payload.results.length > 5) {
-        return { source: "Polygon", status: "delayed", candles: payload.results.map((row: { t: number; o: number; h: number; l: number; c: number; v: number }) => ({ time: Math.floor(row.t / 1000), open: row.o, high: row.h, low: row.l, close: row.c, volume: row.v })) as Candle[] };
+        const candles = payload.results.map((row: { t: number; o: number; h: number; l: number; c: number; v: number }) => ({ time: Math.floor(row.t / 1000), open: row.o, high: row.h, low: row.l, close: row.c, volume: row.v })) as Candle[];
+        const latestBarAge = Date.now() - candles[candles.length - 1].time * 1000;
+        if (latestBarAge <= 72 * 60 * 60 * 1000) {
+          return { source: "Polygon", status: payload.status === "DELAYED" ? "delayed" : "real-time", interval, candles };
+        }
       }
     } catch { /* fallback below keeps the UI honest */ }
   }
   const alphaKey = process.env.ALPHA_VANTAGE_API_KEY;
   if (alphaKey && !cleanSymbol.includes(":")) {
     try {
-      const url = `https://www.alphavantage.co/query?function=TIME_SERIES_INTRADAY&symbol=${encodeURIComponent(cleanSymbol)}&interval=5min&outputsize=compact&apikey=${encodeURIComponent(alphaKey)}`;
+      const url = `https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol=${encodeURIComponent(cleanSymbol)}&outputsize=compact&apikey=${encodeURIComponent(alphaKey)}`;
       const response = await fetch(url, { next: { revalidate: 60 } });
       const payload = await response.json();
-      const series = payload["Time Series (5min)"];
+      const series = payload["Time Series (Daily)"];
       if (series) {
-        const candles = Object.entries(series).reverse().map(([stamp, raw]) => { const row = raw as Record<string, string>; return { time: Math.floor(new Date(stamp).getTime() / 1000), open: Number(row["1. open"]), high: Number(row["2. high"]), low: Number(row["3. low"]), close: Number(row["4. close"]), volume: Number(row["5. volume"]) }; });
-        return { source: "Alpha Vantage", status: "delayed", candles };
+        const candles = Object.entries(series).sort(([left], [right]) => left.localeCompare(right)).map(([stamp, raw]) => { const row = raw as Record<string, string>; return { time: Math.floor(new Date(`${stamp}T00:00:00Z`).getTime() / 1000), open: Number(row["1. open"]), high: Number(row["2. high"]), low: Number(row["3. low"]), close: Number(row["4. close"]), volume: Number(row["5. volume"]) }; });
+        return { source: "Alpha Vantage", status: "end-of-day", interval: "1D", candles };
       }
     } catch { /* fallback below keeps the UI honest */ }
   }
-  return { source: "OpenView demo feed", status: "simulated", candles: seededCandles(cleanSymbol) };
+  return { source: "OpenView demo feed", status: "simulated", interval, candles: seededCandles(cleanSymbol) };
 }
