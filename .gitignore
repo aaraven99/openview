@@ -1,0 +1,9 @@
+node_modules/
+.next/
+out/
+output/
+.playwright-mcp/
+*.tsbuildinfo
+.env
+.env.local
+npm-debug.log*
